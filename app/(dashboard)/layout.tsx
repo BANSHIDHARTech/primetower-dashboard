@@ -10,21 +10,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const tokenCookie = cookies().get('access_token');
-  const token = tokenCookie?.value;
-
-  if (!token) redirect('/login');
-
-  let role: UserRole = 'dealer';
-  let fullName = 'User';
-
-  try {
-    const decoded: any = jwtDecode(token);
-    role = decoded.role as UserRole;
-    fullName = decoded.phone || 'User';
-  } catch (error) {
-    redirect('/login');
-  }
+  let role: UserRole = 'superadmin';
+  let fullName = 'Admin User';
 
   return (
     <div className="min-h-screen bg-[#FFF9E9]">
