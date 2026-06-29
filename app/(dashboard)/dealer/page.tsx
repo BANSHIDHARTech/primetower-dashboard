@@ -108,7 +108,7 @@ export default async function DealerDashboard() {
                 className="border-b border-[#C3C6D4]/10 hover:bg-[#FFF9E9]/50 transition-colors"
               >
                 <td className="py-3 px-4 text-sm font-semibold text-[#1E1C0D]">
-                  {rep.fullName || rep.full_name}
+                  {rep.fullName}
                 </td>
                 <td className="py-3 px-4 text-sm text-[#434652]">{total}</td>
                 <td className="py-3 px-4 text-sm text-[#434652]">{quoted}</td>
