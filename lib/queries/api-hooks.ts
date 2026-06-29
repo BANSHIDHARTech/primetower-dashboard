@@ -24,13 +24,13 @@ export const fetcher = async (url: string) => {
 
     if (!res.ok) {
       console.error(`SWR API Error on ${url}: ${res.status}`);
-      return [];
+      throw new Error('API request failed');
     }
 
     return res.json();
   } catch (err) {
     console.error(`SWR Network Error on ${url}:`, err);
-    return [];
+    throw err;
   }
 };
 
