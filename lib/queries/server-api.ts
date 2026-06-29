@@ -22,12 +22,12 @@ export async function fetchWithCookie(endpoint: string) {
 
     if (!res.ok) {
       console.error(`API Error on ${endpoint}: ${res.status}`);
-      return {}; // Return empty object instead of throwing to prevent blank screen
+      return []; // Return empty array instead of throwing to prevent blank screen
     }
 
     return res.json();
   } catch (error) {
     console.error(`Network Error on ${endpoint}:`, error);
-    return {};
+    return [];
   }
 }
