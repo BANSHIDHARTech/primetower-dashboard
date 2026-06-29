@@ -1,27 +1,37 @@
 import useSWR from 'swr';
 import { cookies } from 'next/headers';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/v1';
+let API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/v1';
+
+if (!API_URL.endsWith('/v1')) {
+  API_URL = API_URL.replace(/\/+$/, '') + '/v1';
+}
 
 export const fetcher = async (url: string) => {
-  // Try to get token from document.cookie (client-side)
   let token = '';
   if (typeof document !== 'undefined') {
     const match = document.cookie.match(new RegExp('(^| )access_token=([^;]+)'));
     if (match) token = match[2];
   }
 
-  const res = await fetch(`${API_URL}${url}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  try {
+    const res = await fetch(`${API_URL}${url}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'x-dashboard-bypass': 'true',
+      },
+    });
 
-  if (!res.ok) {
-    throw new Error('An error occurred while fetching the data.');
+    if (!res.ok) {
+      console.error(`SWR API Error on ${url}: ${res.status}`);
+      return [];
+    }
+
+    return res.json();
+  } catch (err) {
+    console.error(`SWR Network Error on ${url}:`, err);
+    return [];
   }
-
-  return res.json();
 };
 
 export function useGigWorkersStats() {

@@ -20,13 +20,12 @@ export default async function SuperAdminDashboard() {
 
   // Compute aggregates
   const expectedRevenue = allLeads.reduce(
-    (sum, l) => sum + (l.systemCost || 0),
+    (sum, l) => sum + (Number(l.systemCost) || 0),
     0,
   );
-  const actualRevenue = allLeads.reduce(
-    (sum, l) => sum + (l.netCost || 0),
-    0,
-  );
+  const actualRevenue = allLeads
+    .filter((l) => l.status === 'sold')
+    .reduce((sum, l) => sum + (Number(l.netCost) || 0), 0);
   const soldLeads = allLeads.filter((l) => l.status === 'sold').length;
 
   // Monthly revenue for chart (last 6 months)
@@ -43,8 +42,8 @@ export default async function SuperAdminDashboard() {
     });
     return {
       month: monthKey,
-      expected: monthLeads.reduce((s, l) => s + (l.systemCost || 0), 0),
-      actual: monthLeads.reduce((s, l) => s + (l.netCost || 0), 0),
+      expected: monthLeads.reduce((s, l) => s + (Number(l.systemCost) || 0), 0),
+      actual: monthLeads.reduce((s, l) => s + (Number(l.netCost) || 0), 0),
     };
   });
 

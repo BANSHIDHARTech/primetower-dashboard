@@ -3,7 +3,7 @@
 import { useDashboardStats } from '@/lib/queries/api-hooks';
 
 const fmt = (n: number) =>
-  n.toLocaleString('en-IN', {
+  (Number(n) || 0).toLocaleString('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 0,
