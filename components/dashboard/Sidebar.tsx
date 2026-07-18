@@ -8,6 +8,7 @@ import {
   Users,
   Clock,
   UserCheck,
+  UserSquare2,
 } from 'lucide-react';
 import type { UserRole } from '@/lib/types';
 
@@ -15,12 +16,14 @@ const superAdminLinks = [
   { href: '/superadmin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/superadmin/dealers', label: 'Dealers', icon: Building2 },
   { href: '/superadmin/leads', label: 'All Leads', icon: Users },
+  { href: '/superadmin/customers', label: 'Customers', icon: UserSquare2 },
   { href: '/superadmin/gig-workers', label: 'Gig Workers', icon: UserCheck },
 ];
 
 const dealerLinks = [
   { href: '/dealer', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dealer/leads', label: 'My Leads', icon: Users },
+  { href: '/dealer/customers', label: 'Customers', icon: UserSquare2 },
   { href: '/dealer/pending-sales', label: 'Pending Sales', icon: Clock },
   { href: '/dealer/gig-workers', label: 'Gig Workers', icon: UserCheck },
 ];

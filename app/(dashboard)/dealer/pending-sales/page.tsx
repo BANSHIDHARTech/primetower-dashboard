@@ -41,9 +41,9 @@ export default async function PendingSalesPage() {
           </thead>
           <tbody>
             {pendingLeads.map((lead) => {
-              const quotedDate = lead.quotation_sent_at
-                ? new Date(lead.quotation_sent_at)
-                : new Date(lead.created_at);
+              const quotedDate = lead.quotationSentAt
+                ? new Date(lead.quotationSentAt)
+                : new Date(lead.createdAt);
               const daysPending = differenceInDays(now, quotedDate);
               const isUrgent = daysPending > 7;
 
@@ -55,13 +55,13 @@ export default async function PendingSalesPage() {
                   }`}
                 >
                   <td className="py-3 px-4 text-sm font-semibold text-[#1E1C0D]">
-                    {lead.customer_name}
+                    {lead.customerName}
                   </td>
                   <td className="py-3 px-4 text-sm text-[#434652]">
-                    {lead.customer_phone}
+                    {lead.customerPhone}
                   </td>
                   <td className="py-3 px-4 text-sm font-semibold text-[#003178]">
-                    {(lead.expected_revenue || 0).toLocaleString('en-IN', {
+                    {(lead.systemCost || lead.netCost || 0).toLocaleString('en-IN', {
                       style: 'currency',
                       currency: 'INR',
                       maximumFractionDigits: 0,

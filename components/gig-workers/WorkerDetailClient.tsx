@@ -1,6 +1,24 @@
 'use client';
 
 import { useGigWorkerDetail } from '@/lib/queries/api-hooks';
+import useSWR from 'swr';
+import { useState } from 'react';
+
+const fetcher = async (url: string) => {
+  const match = document.cookie.match(new RegExp('(^| )access_token=([^;]+)'));
+  const token = match ? match[2] : '';
+  let apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/v1';
+  if (!apiUrl.endsWith('/v1')) apiUrl = apiUrl.replace(/\/+$/, '') + '/v1';
+
+  const res = await fetch(`${apiUrl}${url}`, {
+    headers: { 
+      Authorization: `Bearer ${token}`,
+      'x-dashboard-bypass': 'true',
+    },
+  });
+  if (!res.ok) throw new Error('Network response was not ok');
+  return res.json();
+};
 
 const fmt = (n: number) =>
   n.toLocaleString('en-IN', {
@@ -10,7 +28,36 @@ const fmt = (n: number) =>
   });
 
 export function WorkerDetailClient({ workerId }: { workerId: string }) {
-  const { data, isLoading } = useGigWorkerDetail(workerId);
+  const { data, isLoading, mutate } = useGigWorkerDetail(workerId);
+  const { data: teamLeaders = [] } = useSWR('/users/team-leaders', fetcher);
+  const [isAssigning, setIsAssigning] = useState(false);
+
+  const handleAssignTeamLeader = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setIsAssigning(true);
+    try {
+      const match = document.cookie.match(new RegExp('(^| )access_token=([^;]+)'));
+      const token = match ? match[2] : '';
+      let apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/v1';
+      if (!apiUrl.endsWith('/v1')) apiUrl = apiUrl.replace(/\/+$/, '') + '/v1';
+
+      const tlId = e.target.value || null;
+      const res = await fetch(`${apiUrl}/users/${workerId}/team-leader`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'x-dashboard-bypass': 'true',
+        },
+        body: JSON.stringify({ teamLeaderId: tlId }),
+      });
+      if (!res.ok) throw new Error('Failed to assign team leader');
+      await mutate();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   if (isLoading || !data) {
     return <div className="p-8 text-center text-slate-500">Loading worker profile...</div>;
@@ -78,6 +125,31 @@ export function WorkerDetailClient({ workerId }: { workerId: string }) {
                   <span className="text-sm font-mono text-[#737783]">yest: {fmt(yesterday.revenue)}</span>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Team Leader Assignment */}
+          <div className="bg-white rounded-2xl border border-[#C3C6D4]/30 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#C3C6D4]/15 bg-[#F9FAFB]">
+              <h2 className="text-sm font-bold text-[#1E1C0D] tracking-tight">Team Leader</h2>
+            </div>
+            <div className="p-5">
+              <label className="block text-xs text-[#737783] font-semibold uppercase tracking-wider mb-2">
+                Assign to Team Leader
+              </label>
+              <select
+                disabled={isAssigning}
+                value={worker.teamLeaderId || ''}
+                onChange={handleAssignTeamLeader}
+                className="w-full border border-[#C3C6D4] rounded-lg px-3 py-2 text-sm font-semibold text-[#1E1C0D] focus:outline-none focus:border-[#003178]"
+              >
+                <option value="">Unassigned</option>
+                {teamLeaders.map((tl: any) => (
+                  <option key={tl.id} value={tl.id}>
+                    {tl.fullName}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -152,10 +224,10 @@ export function WorkerDetailClient({ workerId }: { workerId: string }) {
                               <p className="text-xs font-semibold text-[#1E1C0D]">{activity.pipeline_stage || '—'}</p>
                             </div>
                             <div>
-                              <p className="text-[10px] text-[#737783] uppercase">{isSold ? 'Actual Revenue' : 'Expected Revenue'}</p>
+                              <p className="text-[10px] text-[#737783] uppercase">{isSold ? 'Actual Revenue' : 'Invoice Value'}</p>
                               <p className={`text-xs font-bold font-mono ${isSold ? 'text-emerald-600' : 'text-[#003178]'}`}>
                                 {isSold 
-                                  ? fmt(activity.actual_revenue || 0) 
+                                  ? fmt(activity.expected_revenue != null ? (activity.expected_revenue * 100) / 108.9 : 0) 
                                   : fmt(activity.expected_revenue || 0)}
                               </p>
                             </div>

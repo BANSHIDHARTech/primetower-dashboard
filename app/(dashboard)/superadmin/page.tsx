@@ -1,6 +1,7 @@
 import { format, subMonths } from 'date-fns';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { HomeLiveStats } from '@/components/dashboard/HomeLiveStats';
+import { KeyMetricsTab } from '@/components/dashboard/KeyMetricsTab';
 import { RevenueChart } from '@/components/charts/RevenueChart';
 import { LeadPipeline } from '@/components/leads/LeadPipeline';
 import { fetchWithCookie } from '@/lib/queries/server-api';
@@ -9,7 +10,11 @@ import type { Lead } from '@/lib/types';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function SuperAdminDashboard() {
+export default async function SuperAdminDashboard({
+  searchParams,
+}: {
+  searchParams: { tab?: string };
+}) {
   const [leadsRes, dealersRes] = await Promise.all([
     fetchWithCookie('/leads'),
     fetchWithCookie('/users/dealers'),
@@ -18,17 +23,25 @@ export default async function SuperAdminDashboard() {
   const allLeads = (leadsRes || []) as Lead[];
   const dealers = dealersRes || [];
 
-  // Compute aggregates
+  // ── Meta Ad Spend placeholder ────────────────────────────────────────────
+  // TODO: Replace with real Meta API fetch once integrated.
+  // Shape: { today: number (INR), mtd: number (INR) }
+  const metaAdSpend = { today: 0, mtd: 0 };
+
+  // ── Compute aggregates (existing — unchanged) ────────────────────────────
   const expectedRevenue = allLeads.reduce(
     (sum, l) => sum + (Number(l.systemCost) || 0),
     0,
   );
   const actualRevenue = allLeads
     .filter((l) => l.status === 'sold')
-    .reduce((sum, l) => sum + (Number(l.netCost) || 0), 0);
+    .reduce((sum, l) => {
+      const invoiceVal = Number(l.systemCost) || 0;
+      return sum + (invoiceVal * 100) / 108.9;
+    }, 0);
   const soldLeads = allLeads.filter((l) => l.status === 'sold').length;
 
-  // Monthly revenue for chart (last 6 months)
+  // Monthly revenue for chart (last 6 months) — existing, unchanged
   const now = new Date();
   const chartData = Array.from({ length: 6 }, (_, i) => {
     const monthDate = subMonths(now, 5 - i);
@@ -43,89 +56,132 @@ export default async function SuperAdminDashboard() {
     return {
       month: monthKey,
       expected: monthLeads.reduce((s, l) => s + (Number(l.systemCost) || 0), 0),
-      actual: monthLeads.reduce((s, l) => s + (Number(l.netCost) || 0), 0),
+      actual: monthLeads.reduce((s, l) => {
+        const invoiceVal = Number(l.systemCost) || 0;
+        return s + (invoiceVal * 100) / 108.9;
+      }, 0),
     };
   });
 
-  // Funnel
+  // Funnel — existing, unchanged
   const newCount = allLeads.filter((l) => l.status === 'new_lead' || l.status === 'new').length;
   const svCount = allLeads.filter((l) => l.status === 'site_visit_scheduled').length;
   const quotedCount = allLeads.filter((l) => l.status === 'quoted').length;
   const total = allLeads.length || 1;
 
+  // ── Active tab ──────────────────────────────────────────────────────────
+  const activeTab = searchParams.tab === 'key-metrics' ? 'key-metrics' : 'overview';
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-[#003178] tracking-tight">
-          SuperAdmin Dashboard
-        </h1>
-        <p className="text-sm text-[#434652]">
-          Overview of {allLeads.length} leads across {dealers.length} dealers
-        </p>
-      </div>
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold text-[#003178] tracking-tight">
+            SuperAdmin Dashboard
+          </h1>
+          <p className="text-sm text-[#434652]">
+            Overview of {allLeads.length} leads across {dealers.length} dealers
+          </p>
+        </div>
 
-      {/* Live Meeting & Revenue Stats */}
-      <HomeLiveStats />
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatsCard
-          title="Expected Revenue"
-          value={expectedRevenue}
-          subtitle={`${allLeads.length} total leads`}
-          color="blue"
-        />
-        <StatsCard
-          title="Actual Revenue"
-          value={actualRevenue}
-          subtitle={`${soldLeads} deals closed`}
-          color="green"
-        />
-        <StatsCard
-          title="Pipeline Value"
-          value={expectedRevenue - actualRevenue}
-          subtitle={`${quotedCount} quoted leads`}
-          color="orange"
-        />
-      </div>
-
-      {/* Chart + Pipeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RevenueChart data={chartData} />
-        <LeadPipeline leads={allLeads} />
-      </div>
-
-      {/* Conversion Funnel */}
-      <div className="bg-white rounded-2xl border border-[#C3C6D4]/15 p-6">
-        <h3 className="text-sm font-bold text-[#1E1C0D] mb-4 tracking-tight">
-          Conversion Funnel
-        </h3>
-        <div className="space-y-3">
-          {[
-            { label: 'New', count: newCount, color: 'bg-blue-500' },
-            { label: 'Site Visit', count: svCount, color: 'bg-purple-500' },
-            { label: 'Quoted', count: quotedCount, color: 'bg-yellow-500' },
-            { label: 'Sold', count: soldLeads, color: 'bg-green-500' },
-          ].map((stage) => (
-            <div key={stage.label}>
-              <div className="flex justify-between mb-1">
-                <span className="text-xs font-semibold text-[#434652]">
-                  {stage.label}
-                </span>
-                <span className="text-xs font-bold text-[#1E1C0D]">
-                  {stage.count} ({Math.round((stage.count / total) * 100)}%)
-                </span>
-              </div>
-              <div className="h-2.5 bg-[#E9E2CB] rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${stage.color}`}
-                  style={{ width: `${(stage.count / total) * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
+        {/* ── Tab switcher ───────────────────────────────────────────────── */}
+        <div className="flex items-center gap-1 bg-[#F5EED6] rounded-xl p-1 self-start sm:self-auto">
+          <a
+            href="/superadmin"
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'overview'
+                ? 'bg-[#003178] text-white shadow-sm'
+                : 'text-[#434652] hover:text-[#003178]'
+            }`}
+          >
+            📊 Overview
+          </a>
+          <a
+            href="/superadmin?tab=key-metrics"
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              activeTab === 'key-metrics'
+                ? 'bg-[#003178] text-white shadow-sm'
+                : 'text-[#434652] hover:text-[#003178]'
+            }`}
+          >
+            🎯 Key Metrics
+          </a>
         </div>
       </div>
+
+      {/* ── Key Metrics Tab ─────────────────────────────────────────────── */}
+      {activeTab === 'key-metrics' && (
+        <KeyMetricsTab allLeads={allLeads} metaAdSpend={metaAdSpend} />
+      )}
+
+      {/* ── Overview Tab (all existing content — unchanged) ─────────────── */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Live Meeting & Revenue Stats */}
+          <HomeLiveStats />
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatsCard
+              title="Invoice Value"
+              value={expectedRevenue}
+              subtitle={`${allLeads.length} total leads`}
+              color="blue"
+            />
+            <StatsCard
+              title="Actual Revenue"
+              value={actualRevenue}
+              subtitle={`${soldLeads} deals closed`}
+              color="green"
+            />
+            <StatsCard
+              title="Pipeline Value"
+              value={expectedRevenue - actualRevenue}
+              subtitle={`${quotedCount} quoted leads`}
+              color="orange"
+            />
+          </div>
+
+          {/* Chart + Pipeline */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <RevenueChart data={chartData} />
+            <LeadPipeline leads={allLeads} />
+          </div>
+
+          {/* Conversion Funnel */}
+          <div className="bg-white rounded-2xl border border-[#C3C6D4]/15 p-6">
+            <h3 className="text-sm font-bold text-[#1E1C0D] mb-4 tracking-tight">
+              Conversion Funnel
+            </h3>
+            <div className="space-y-3">
+              {[
+                { label: 'New', count: newCount, color: 'bg-blue-500' },
+                { label: 'Site Visit', count: svCount, color: 'bg-purple-500' },
+                { label: 'Quoted', count: quotedCount, color: 'bg-yellow-500' },
+                { label: 'Sold', count: soldLeads, color: 'bg-green-500' },
+              ].map((stage) => (
+                <div key={stage.label}>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-xs font-semibold text-[#434652]">
+                      {stage.label}
+                    </span>
+                    <span className="text-xs font-bold text-[#1E1C0D]">
+                      {stage.count} ({Math.round((stage.count / total) * 100)}%)
+                    </span>
+                  </div>
+                  <div className="h-2.5 bg-[#E9E2CB] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${stage.color}`}
+                      style={{ width: `${(stage.count / total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useGigWorkersStats, useRecentConversions } from '@/lib/queries/api-hooks';
 import Link from 'next/link';
+import { useState } from 'react';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const fmt = (n: number) =>
@@ -74,6 +75,45 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
   const { data: workers = [], isLoading: loadingWorkers } = useGigWorkersStats();
   const { data: conversions = [], isLoading: loadingConversions } = useRecentConversions();
   
+  const [isTeamLeaderModalOpen, setIsTeamLeaderModalOpen] = useState(false);
+  const [newTLName, setNewTLName] = useState('');
+  const [newTLPhone, setNewTLPhone] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleCreateTeamLeader = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreating(true);
+    try {
+      const match = document.cookie.match(new RegExp('(^| )access_token=([^;]+)'));
+      const token = match ? match[2] : '';
+      
+      let apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/v1';
+      if (!apiUrl.endsWith('/v1')) apiUrl = apiUrl.replace(/\/+$/, '') + '/v1';
+
+      const res = await fetch(`${apiUrl}/users/team-leaders`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'x-dashboard-bypass': 'true',
+        },
+        body: JSON.stringify({ fullName: newTLName, phone: newTLPhone })
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Failed to create team leader (${res.status}): ${txt}`);
+      }
+      setIsTeamLeaderModalOpen(false);
+      setNewTLName('');
+      setNewTLPhone('');
+      alert('Team Leader created successfully!');
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+  
   if (loadingWorkers || loadingConversions) {
     return <div className="p-8 text-center text-slate-500 font-medium">Loading Real-Time Data...</div>;
   }
@@ -100,10 +140,20 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
             <span className="text-xs text-[#737783]">Live — updated just now</span>
           </p>
         </div>
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-          LIVE
-        </span>
+        <div className="flex items-center gap-3">
+          {basePath === '/superadmin' && (
+            <button
+              onClick={() => setIsTeamLeaderModalOpen(true)}
+              className="text-xs font-bold text-white bg-[#003178] px-4 py-2 rounded-lg hover:bg-[#003178]/90 transition-colors shadow-sm"
+            >
+              + Create Team Leader
+            </button>
+          )}
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+            LIVE
+          </span>
+        </div>
       </div>
 
       {/* Top summary cards */}
@@ -150,6 +200,7 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
               <tr className="bg-[#F5EED6]">
                 {[
                   'Gig Worker',
+                  'Team Leader',
                   'Status',
                   'Leads Today',
                   'Leads Yesterday',
@@ -197,6 +248,12 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
                         <p className="text-sm font-semibold text-[#1E1C0D]">{w.name}</p>
                       </div>
                     </div>
+                  </td>
+                  {/* Team Leader */}
+                  <td className="py-3 px-4">
+                    <span className="text-xs font-semibold text-[#434652] whitespace-nowrap">
+                      {w.teamLeaderName || '—'}
+                    </span>
                   </td>
                   {/* Status */}
                   <td className="py-3 px-4">
@@ -343,6 +400,54 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
           </table>
         </div>
       </div>
+      {/* Modal */}
+      {isTeamLeaderModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-extrabold text-[#003178] mb-4">Create Team Leader</h2>
+            <form onSubmit={handleCreateTeamLeader} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#434652] uppercase mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={newTLName}
+                  onChange={(e) => setNewTLName(e.target.value)}
+                  className="w-full border border-[#C3C6D4] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#003178]"
+                  placeholder="e.g. John Doe"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#434652] uppercase mb-1">Phone Number</label>
+                <input
+                  type="text"
+                  required
+                  value={newTLPhone}
+                  onChange={(e) => setNewTLPhone(e.target.value)}
+                  className="w-full border border-[#C3C6D4] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#003178]"
+                  placeholder="e.g. 9876543210"
+                />
+              </div>
+              <div className="flex gap-3 pt-4 border-t border-[#C3C6D4]/20">
+                <button
+                  type="button"
+                  onClick={() => setIsTeamLeaderModalOpen(false)}
+                  className="flex-1 py-2 rounded-lg text-sm font-bold text-[#434652] bg-gray-100 hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className="flex-1 py-2 rounded-lg text-sm font-bold text-white bg-[#003178] hover:bg-[#003178]/90 disabled:opacity-50"
+                >
+                  {isCreating ? 'Creating...' : 'Create Leader'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

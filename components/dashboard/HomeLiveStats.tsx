@@ -93,14 +93,14 @@ export function HomeLiveStats({ dealerId }: { dealerId?: string }) {
           accent="#f43f5e" 
         />
         <StatCard
-          title="Expected Revenue"
+          title="Invoice Value"
           value={fmt(stats.expectedRevenue)}
           subtitle="Pipeline potential"
           accent="#facc15" 
         />
         <StatCard
           title="Actual Revenue"
-          value={fmt(stats.actualRevenue)}
+          value={fmt(stats.expectedRevenue != null ? (stats.expectedRevenue * 100) / 108.9 : 0)}
           subtitle="Total closed"
           accent="#2dd4bf" 
         />

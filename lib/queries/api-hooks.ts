@@ -42,10 +42,10 @@ export function useGigWorkersStats() {
 }
 
 export function useGigWorkerDetail(id: string) {
-  const { data, error, isLoading } = useSWR(`/analytics/gig-workers/${id}`, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(`/analytics/gig-workers/${id}`, fetcher, {
     refreshInterval: 5000,
   });
-  return { data, error, isLoading };
+  return { data, error, isLoading, mutate };
 }
 
 export function useDashboardStats() {
@@ -60,4 +60,47 @@ export function useRecentConversions() {
     refreshInterval: 5000,
   });
   return { data, error, isLoading };
+}
+
+export function useCustomers() {
+  const { data, error, isLoading, mutate } = useSWR('/leads', fetcher, {
+    refreshInterval: 10000, // Live refresh every 10s
+  });
+  return { data, error, isLoading, mutate };
+}
+
+export function useCustomerDetail(id: string) {
+  const { data, error, isLoading, mutate } = useSWR(id ? `/leads/${id}` : null, fetcher, {
+    refreshInterval: 0, // Don't auto-refresh — only refresh after edits
+  });
+  return { data, error, isLoading, mutate };
+}
+
+/**
+ * PATCH /leads/:id — update any subset of lead fields.
+ * Used by the dashboard's inline edit panel.
+ */
+export async function patchLead(id: string, fields: Record<string, any>): Promise<void> {
+  let token = '';
+  if (typeof document !== 'undefined') {
+    const match = document.cookie.match(new RegExp('(^| )access_token=([^;]+)'));
+    if (match) token = match[2];
+  }
+
+  const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/v1').replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1';
+
+  const res = await fetch(`${API_BASE}/leads/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'x-dashboard-bypass': 'true',
+    },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Update failed' }));
+    throw new Error(err.message || 'Update failed');
+  }
 }

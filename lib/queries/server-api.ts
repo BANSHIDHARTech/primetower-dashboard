@@ -22,7 +22,7 @@ export async function fetchWithCookie(endpoint: string) {
 
     if (!res.ok) {
       console.error(`API Error on ${endpoint}: ${res.status}`);
-      return []; // Return empty array instead of throwing to prevent blank screen
+      return null;
     }
 
     return res.json();
