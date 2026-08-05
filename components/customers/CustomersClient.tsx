@@ -72,12 +72,24 @@ function CustomerCard({
   const ring = LEAD_STATUS_RING[customer.status] ?? 'ring-slate-300';
   
   const latestQuotation = customer.quotations?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-  let revenue = latestQuotation?.systemCost != null ? Number(latestQuotation.systemCost) : (customer.netCost || customer.systemCost);
-  
-  // HACK: The list view API (/leads) doesn't return `quotations`, and defaults to 490950/598950. 
-  // We calculate the expected quotation value (₹65,340 per kW) so the list cards show the correct value!
+  let revenue = latestQuotation?.systemCost != null ? Number(latestQuotation.systemCost) : (customer.systemCost || customer.netCost);
+
+  // If there's no quotation and the DB has dummy default data, calculate the correct systemCost based on slabs
   if (!latestQuotation && (revenue === 490950 || revenue === 598950) && customer.recommendedKw) {
-    revenue = customer.recommendedKw * 65340;
+    const kw = customer.recommendedKw;
+    let ratePerKW = 60000;
+    if (kw === 2) ratePerKW = 63000;
+    else if (kw === 3) ratePerKW = 60000;
+    else if (kw === 4 || kw === 5) ratePerKW = 59500;
+    else if (kw === 6) ratePerKW = 57500;
+    else if (kw === 7) ratePerKW = 56900;
+    else if (kw === 8) ratePerKW = 56000;
+    else if (kw === 9) ratePerKW = 55500;
+    else if (kw >= 10) ratePerKW = 55000;
+    
+    const baseCost = kw * ratePerKW;
+    const gstAmount = Math.round(baseCost * 0.089 * 100) / 100;
+    revenue = baseCost + gstAmount;
   }
 
   return (
@@ -312,25 +324,35 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
     setIsExporting(true);
     try {
       const headers = [
-        'SNO', 'CREATED DATE', 'CREATED TIME', 'GIG WORKER NAME', 'GIG WORKER PHONE',
-        'REPORTING MANAGER', 'CUST NAME', 'CUST PHONE', 'CUST CITY', 'GEO LOCATION',
+        'SNO', 'CREATED DATE', 'CREATED TIME', 'QUOTATION DATE', 'QUOTATION TIME', 'GIG WORKER NAME', 'GIG WORKER PHONE',
+        'REPORTING MANAGER', 'CUST NAME', 'CUST PHONE', 'CUST CITY', 'CITY', 'GEO LOCATION',
         'ELECTRICITY BILL', 'FUEL BILL', 'QUOTED PRICE', 'CUST REFERRAL', 'SPECIAL DISCOUNT %',
         'SPECIAL DISCOUNT', 'INVOICE AMOUNT', 'ACTUAL REVENUE', 'SUBSIDY', 'SYSTEM TYPE',
         'PANELS', 'INVERTER', 'STRUCTURE HEIGHT', 'INSTALLATION FLOOR', 'ROOFTOP PICTURE',
         'ELECTRICITY BILL DOC', 'AADHAR FRONT', 'AADHAR BACK', 'PAN CARD', 'DOWNPAYMENT',
-        'PIC', 'NOTES'
+        'DOWNPAYMENT MODE', 'PIC', 'NOTES'
       ];
       
-      const fullCustomers = await Promise.all(
-        filtered.map(async (c) => {
-          try {
-            const detail = await fetcher(`/leads/${c.id}`);
-            return { ...c, ...detail };
-          } catch (e) {
-            return c;
-          }
-        })
-      );
+      const fullCustomers: any[] = [];
+      const CHUNK_SIZE = 5;
+      
+      for (let i = 0; i < filtered.length; i += CHUNK_SIZE) {
+        const chunk = filtered.slice(i, i + CHUNK_SIZE);
+        const chunkResults = await Promise.all(
+          chunk.map(async (c) => {
+            try {
+              const detail = await fetcher(`/leads/${c.id}`);
+              return { ...c, ...detail };
+            } catch (e) {
+              return c;
+            }
+          })
+        );
+        fullCustomers.push(...chunkResults);
+        
+        // Let the main thread and network queue breathe
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
       
       const makeLinkCell = (url: string | null | undefined) => {
         if (!url) return 'No';
@@ -348,6 +370,23 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
       const createdDateStr = createdAtDate ? createdAtDate.toLocaleDateString() : '';
       const createdTimeStr = createdAtDate ? createdAtDate.toLocaleTimeString() : '';
 
+      const quotationDateObj = latestQuotation?.createdAt ? new Date(latestQuotation.createdAt) : null;
+      const quotationDateStr = quotationDateObj ? quotationDateObj.toLocaleDateString() : '';
+      const quotationTimeStr = quotationDateObj ? quotationDateObj.toLocaleTimeString() : '';
+
+      let displayDistrict = c.district;
+      let displayState = c.state;
+      if (c.address && (!displayDistrict || !displayState)) {
+        const parts = c.address.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (parts.length >= 3) {
+          if (!displayState) displayState = parts[parts.length - 1];
+          if (!displayDistrict) displayDistrict = parts[parts.length - 2];
+        } else if (parts.length === 2) {
+          if (!displayState) displayState = parts[1];
+          if (!displayDistrict) displayDistrict = parts[0];
+        }
+      }
+
       const specialDiscountPct = c.specialDiscountPercent || 0;
       const specialDiscountVal = specialDiscountPct && expectedRevenue ? (expectedRevenue * specialDiscountPct) / 100 : '';
       
@@ -356,16 +395,24 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
       // Actual Revenue = (Invoice Amount * 100) / 108.9 (Removing 8.9% tax effectively)
       const actualRevenue = invoiceAmount !== '' ? (Number(invoiceAmount) * 100) / 108.9 : '';
       
+      let displaySystemType = c.systemType || '';
+      if (displaySystemType.toLowerCase() === 'hybrid') {
+        displaySystemType = c.isBatteryRequired ? 'Hybrid with battery' : 'Hybrid without battery';
+      }
+      
       return [
         index + 1,
         createdDateStr,
         createdTimeStr,
+        quotationDateStr,
+        quotationTimeStr,
         c.salesRep?.fullName || '',
         c.salesRep?.phone || '',
         '', // REPORTING MANAGER
         c.customerName || '',
         c.customerPhone || '',
         c.district || c.address || '',
+        displayDistrict || '', // CITY
         c.latitude && c.longitude ? `${c.latitude}, ${c.longitude}` : '',
         c.monthlyElectricityBill || '',
         c.monthlyFuelExpense || '',
@@ -376,7 +423,7 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
         invoiceAmount, // INVOICE AMOUNT
         actualRevenue, // ACTUAL REVENUE
         (c as any).subsidy || latestQuotation?.subsidy || '', // SUBSIDY
-        c.systemType || '',
+        displaySystemType,
         c.solarPanelBrand || c.panelBrand || '',
         c.inverterBrand || '',
         c.structureHeight || '',
@@ -387,6 +434,7 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
         makeLinkCell(c.aadhaarBackUrl || c.documents?.find(d => d.documentType === 'aadhaar_back')?.storageUrl),
         makeLinkCell(c.panImageUrl || c.documents?.find(d => d.documentType === 'pan_card')?.storageUrl),
         c.downPayment || '',
+        c.paymentMode || '',
         makeLinkCell(c.documents?.find(d => d.documentType === 'down_payment' || d.documentType === 'payment_proof')?.storageUrl),
         '' // NOTES
       ];
