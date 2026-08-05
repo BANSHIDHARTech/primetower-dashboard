@@ -1,6 +1,6 @@
 'use client';
 
-import { useGigWorkerDetail } from '@/lib/queries/api-hooks';
+import { useGigWorkerDetail, useCustomers } from '@/lib/queries/api-hooks';
 import useSWR from 'swr';
 import { useState } from 'react';
 
@@ -30,6 +30,7 @@ const fmt = (n: number) =>
 export function WorkerDetailClient({ workerId }: { workerId: string }) {
   const { data, isLoading, mutate } = useGigWorkerDetail(workerId);
   const { data: teamLeaders = [] } = useSWR('/users/team-leaders', fetcher);
+  const { data: allLeads = [] } = useCustomers();
   const [isAssigning, setIsAssigning] = useState(false);
 
   const handleAssignTeamLeader = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -68,6 +69,10 @@ export function WorkerDetailClient({ workerId }: { workerId: string }) {
   }
 
   const { worker, today, yesterday, recentActivity } = data;
+  
+  const calcConvRate = worker.total_leads_all_time > 0 
+    ? Math.round((worker.deals_closed_all_time / worker.total_leads_all_time) * 100) 
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -88,7 +93,7 @@ export function WorkerDetailClient({ workerId }: { workerId: string }) {
           
           <div className="ml-auto bg-white/10 rounded-2xl p-4 border border-white/10 backdrop-blur-sm text-center min-w-[120px]">
             <p className="text-[10px] uppercase tracking-widest text-white/70 font-bold mb-1">Conv Rate</p>
-            <p className="text-3xl font-extrabold font-mono">{worker.conversion_rate_all_time}%</p>
+            <p className="text-3xl font-extrabold font-mono">{calcConvRate}%</p>
           </div>
         </div>
       </div>
@@ -221,14 +226,23 @@ export function WorkerDetailClient({ workerId }: { workerId: string }) {
                           <div className="flex gap-4 mt-3 pt-3 border-t border-[#C3C6D4]/15">
                             <div>
                               <p className="text-[10px] text-[#737783] uppercase">Stage</p>
-                              <p className="text-xs font-semibold text-[#1E1C0D]">{activity.pipeline_stage || '—'}</p>
+                              <p className="text-xs font-semibold text-[#1E1C0D] capitalize">{activity.status.replace('_', ' ') || '—'}</p>
                             </div>
                             <div>
                               <p className="text-[10px] text-[#737783] uppercase">{isSold ? 'Actual Revenue' : 'Invoice Value'}</p>
                               <p className={`text-xs font-bold font-mono ${isSold ? 'text-emerald-600' : 'text-[#003178]'}`}>
-                                {isSold 
-                                  ? fmt(activity.expected_revenue != null ? (activity.expected_revenue * 100) / 108.9 : 0) 
-                                  : fmt(activity.expected_revenue || 0)}
+                                {(() => {
+                                  let expected = activity.expected_revenue || 0;
+                                  const fullLead = allLeads.find((l: any) => l.id === activity.id);
+                                  
+                                  if (fullLead && (expected === 490950 || expected === 598950)) {
+                                    expected = (fullLead.recommendedKw || 0) * 65340;
+                                  }
+                                  
+                                  return isSold 
+                                    ? fmt(expected > 0 ? (expected * 100) / 108.9 : 0) 
+                                    : fmt(expected);
+                                })()}
                               </p>
                             </div>
                           </div>

@@ -27,7 +27,10 @@ export function LeadPipeline({ leads }: { leads: Lead[] }) {
       </h3>
       <div className="space-y-3">
         {STAGES.map((stage) => {
-          const count = leads.filter((l) => l.status === stage).length;
+          const count = leads.filter((l) => {
+            if (stage === 'new') return l.status === 'new' || l.status === 'new_lead';
+            return l.status === stage;
+          }).length;
           const pct = Math.round((count / total) * 100);
           return (
             <div key={stage}>

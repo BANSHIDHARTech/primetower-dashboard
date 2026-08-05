@@ -108,8 +108,8 @@ const TIMELINE_STEPS: { key: string; label: string; color: string }[] = [
   { key: 'site_visit_scheduled', label: 'Site Visit', color: '#7c3aed' },
   { key: 'quoted', label: 'Quoted', color: '#d97706' },
   { key: 'survey_done', label: 'Survey Done', color: '#0891b2' },
-  { key: 'installation_scheduled', label: 'Installation Scheduled', color: '#4f46e5' },
   { key: 'sold', label: 'Sold', color: '#2563eb' },
+  { key: 'installation_scheduled', label: 'Installation Scheduled', color: '#4f46e5' },
   { key: 'live', label: 'Live ⚡', color: '#10b981' },
 ];
 
@@ -352,6 +352,16 @@ export function CustomerDetailView({
     displaySystemType = customer.isBatteryRequired ? 'Hybrid with battery' : 'Hybrid without battery';
   }
 
+  // Use latest quotation for accurate financial data if available
+  const latestQuotationForFinance = customer.quotations?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  const displaySystemCost = latestQuotationForFinance?.systemCost != null ? Number(latestQuotationForFinance.systemCost) : customer.systemCost;
+  const displayNetCost = latestQuotationForFinance?.netCost != null ? Number(latestQuotationForFinance.netCost) : customer.netCost;
+
+  const invoiceAmount = displaySystemCost 
+    ? displaySystemCost - ((displaySystemCost * (customer.specialDiscountPercent || 0)) / 100) - (customer.hasReferral ? 3000 : 0)
+    : 0;
+  const actualRevenue = invoiceAmount ? (invoiceAmount * 100) / 108.9 : 0;
+
   return (
     <div className="space-y-6">
       {/* ── Back + breadcrumb ────────────────────────────────── */}
@@ -416,13 +426,13 @@ export function CustomerDetailView({
 
           {/* Revenue pill */}
           <div className="bg-[#F0F4FF] rounded-2xl px-6 py-4 text-center shrink-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#003178]">Revenue</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#003178]">Actual Revenue</p>
             <p className="text-xl font-extrabold text-[#003178] mt-1">
-              {fmtINR(customer.netCost || customer.systemCost)}
+              {fmtINR(actualRevenue)}
             </p>
-            {customer.netCost && customer.systemCost && customer.netCost !== customer.systemCost && (
+            {invoiceAmount > 0 && (
               <p className="text-[10px] text-[#737783] mt-0.5">
-                Expected: {fmtINR(customer.systemCost)}
+                Invoice: {fmtINR(invoiceAmount)}
               </p>
             )}
           </div>
@@ -603,7 +613,7 @@ export function CustomerDetailView({
         >
           <InfoRow
             label="System Size"
-            value={customer.sanctionedLoad ? `${customer.sanctionedLoad} kW` : undefined}
+            value={customer.recommendedKw ? `${customer.recommendedKw} kW` : undefined}
             highlight
           />
           <InfoRow
@@ -615,7 +625,7 @@ export function CustomerDetailView({
           <InfoRow label="Panel Brand" value={customer.solarPanelBrand ?? customer.panelBrand} />
           <InfoRow
             label="Panel Count"
-            value={customer.sanctionedLoad ? `${Math.ceil(customer.sanctionedLoad * 2)} panels` : undefined}
+            value={undefined}
           />
           <InfoRow label="Structure Height" value={customer.structureHeight} />
         </Section>
@@ -630,8 +640,21 @@ export function CustomerDetailView({
             </svg>
           }
         >
-          <InfoRow label="Invoice Value" value={fmtINR(customer.systemCost)} />
-          <InfoRow label="Actual Revenue" value={fmtINR(customer.systemCost != null ? (customer.systemCost * 100) / 108.9 : null)} highlight />
+          <InfoRow 
+            label="Invoice Amount" 
+            value={fmtINR(invoiceAmount)} 
+            highlight 
+          />
+          <InfoRow 
+            label="Actual Revenue" 
+            value={fmtINR(actualRevenue)} 
+          />
+          <InfoRow label="Net Cost (Subsidy)" value={fmtINR(displayNetCost)} />
+          <InfoRow label="Referral Given" value={customer.hasReferral ? 'Yes' : 'No'} />
+          <InfoRow label="Applied Discount" value={customer.specialDiscountPercent ? `${customer.specialDiscountPercent}%` : 'None'} />
+          <InfoRow label="Downpayment" value={customer.downPayment != null ? fmtINR(customer.downPayment) : '—'} />
+          <InfoRow label="Payment Mode" value={customer.paymentMode} />
+          
           <div className="flex items-center justify-between py-2 border-b border-[#C3C6D4]/10 last:border-0">
             <span className="text-xs text-[#737783] font-medium shrink-0 w-40">Quotation Sent</span>
             <div className="flex items-center gap-3">
@@ -706,7 +729,7 @@ export function CustomerDetailView({
             </svg>
           }
         >
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4 p-2">
             <DocumentPreview 
               title="Aadhaar Card" 
               url={customer.aadhaarFrontUrl || customer.documents?.find(d => d.documentType === 'aadhaar_front')?.storageUrl} 
@@ -723,6 +746,11 @@ export function CustomerDetailView({
               title="Rooftop Photo" 
               url={customer.roofPhotos?.[0]?.photoUrl} 
               subtitle={customer.roofPhotos?.[0]?.direction}
+            />
+            <DocumentPreview 
+              title="Payment Proof" 
+              url={customer.documents?.find(d => ['cheque', 'upi', 'payment_proof', 'payment'].includes(d.documentType.toLowerCase()))?.storageUrl} 
+              subtitle={customer.documents?.find(d => ['cheque', 'upi', 'payment_proof', 'payment'].includes(d.documentType.toLowerCase()))?.documentType?.replace('_', ' ')}
             />
           </div>
         </Section>

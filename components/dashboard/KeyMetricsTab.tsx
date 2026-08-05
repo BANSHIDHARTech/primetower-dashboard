@@ -119,9 +119,11 @@ interface KeyMetricsTabProps {
   allLeads: Lead[];
   /** Meta ad spend — pass { today: 0, mtd: 0 } until backend/Meta API is wired. */
   metaAdSpend: MetaAdSpend;
+  /** Optional: meta lead counts fetched from Meta Graph. If provided these override local lead counts. */
+  metaLeads?: { today: number; mtd: number };
 }
 
-export function KeyMetricsTab({ allLeads, metaAdSpend }: KeyMetricsTabProps) {
+export function KeyMetricsTab({ allLeads, metaAdSpend, metaLeads }: KeyMetricsTabProps) {
   const today    = todayIST();
   const mtdStart = mtdStartIST();
 
@@ -135,9 +137,9 @@ export function KeyMetricsTab({ allLeads, metaAdSpend }: KeyMetricsTabProps) {
   // Section 1 — Marketing & Leads (Total Leads for now)
   // ═══════════════════════════════════════════════
 
-  // Using all leads since 'source' field is not available yet
-  const metaLeadsToday = allLeads.filter((l) => isToday(l.createdAt)).length;
-  const metaLeadsMTD = allLeads.filter((l) => isMTD(l.createdAt)).length;
+  // Prefer Meta-provided lead counts if available, else fallback to local leads
+  const metaLeadsToday = (metaLeads && metaLeads.today > 0) ? metaLeads.today : allLeads.filter((l) => isToday(l.createdAt)).length;
+  const metaLeadsMTD = (metaLeads && metaLeads.mtd > 0) ? metaLeads.mtd : allLeads.filter((l) => isMTD(l.createdAt)).length;
 
   const adSpendToday = metaAdSpend.today;
   const adSpendMTD   = metaAdSpend.mtd;

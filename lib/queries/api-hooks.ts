@@ -104,3 +104,22 @@ export async function patchLead(id: string, fields: Record<string, any>): Promis
     throw new Error(err.message || 'Update failed');
   }
 }
+
+// Client-side hook to fetch Meta ad spend from the local Next API route
+const metaFetcher = async (url: string) => {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Meta API fetch failed');
+    return res.json();
+  } catch (e) {
+    console.error('Meta fetch error', e);
+    return { today: 0, mtd: 0 };
+  }
+};
+
+export function useMetaAdSpend() {
+  const { data, error, isLoading } = useSWR('/api/meta/ads', metaFetcher, {
+    refreshInterval: 60_000, // refresh every minute
+  });
+  return { data, error, isLoading };
+}

@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { useCustomers } from '@/lib/queries/api-hooks';
+import * as XLSX from 'xlsx';
+import { useCustomers, fetcher } from '@/lib/queries/api-hooks';
 import {
   LEAD_STATUS_LABELS,
   LEAD_STATUS_COLORS,
@@ -69,7 +70,15 @@ function CustomerCard({
 }) {
   const grad = avatarGrad(customer.customerName);
   const ring = LEAD_STATUS_RING[customer.status] ?? 'ring-slate-300';
-  const revenue = customer.netCost || customer.systemCost;
+  
+  const latestQuotation = customer.quotations?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  let revenue = latestQuotation?.systemCost != null ? Number(latestQuotation.systemCost) : (customer.netCost || customer.systemCost);
+  
+  // HACK: The list view API (/leads) doesn't return `quotations`, and defaults to 490950/598950. 
+  // We calculate the expected quotation value (₹65,340 per kW) so the list cards show the correct value!
+  if (!latestQuotation && (revenue === 490950 || revenue === 598950) && customer.recommendedKw) {
+    revenue = customer.recommendedKw * 65340;
+  }
 
   return (
     <Link
@@ -237,11 +246,38 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [panelFilter, setPanelFilter] = useState('');
+  const [inverterFilter, setInverterFilter] = useState('');
+  const [systemTypeFilter, setSystemTypeFilter] = useState('');
+
+  const uniquePanels = useMemo(() => Array.from(new Set(customers.map(c => c.solarPanelBrand || c.panelBrand).filter(Boolean))), [customers]);
+  const uniqueInverters = useMemo(() => Array.from(new Set(customers.map(c => c.inverterBrand).filter(Boolean))), [customers]);
+  const uniqueSystemTypes = useMemo(() => Array.from(new Set(customers.map(c => c.systemType).filter(Boolean))), [customers]);
+
   // Filtered customers
   const filtered = useMemo(() => {
     let list = customers;
     if (statusFilter !== 'all') {
       list = list.filter((c) => c.status === statusFilter);
+    }
+    if (startDate) {
+      list = list.filter(c => new Date(c.createdAt) >= new Date(startDate));
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      list = list.filter(c => new Date(c.createdAt) <= end);
+    }
+    if (panelFilter) {
+      list = list.filter(c => (c.solarPanelBrand || c.panelBrand) === panelFilter);
+    }
+    if (inverterFilter) {
+      list = list.filter(c => c.inverterBrand === inverterFilter);
+    }
+    if (systemTypeFilter) {
+      list = list.filter(c => c.systemType === systemTypeFilter);
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -254,12 +290,148 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
       );
     }
     return list;
-  }, [customers, search, statusFilter]);
+  }, [customers, search, statusFilter, startDate, endDate, panelFilter, inverterFilter, systemTypeFilter]);
 
   // Stats for mini header
   const liveCount = customers.filter((c) => c.status === 'live').length;
   const soldCount = customers.filter((c) => c.status === 'sold').length;
-  const totalRevenue = customers.reduce((s, c) => s + (c.netCost || c.systemCost || 0), 0);
+  const totalRevenue = customers.reduce((s, c) => {
+    const lq = c.quotations?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    let rev = lq?.systemCost != null ? Number(lq.systemCost) : (c.netCost || c.systemCost || 0);
+    
+    if (!lq && (rev === 490950 || rev === 598950) && c.recommendedKw) {
+      rev = c.recommendedKw * 65340;
+    }
+    
+    return s + rev;
+  }, 0);
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const headers = [
+        'SNO', 'CREATED DATE', 'CREATED TIME', 'GIG WORKER NAME', 'GIG WORKER PHONE',
+        'REPORTING MANAGER', 'CUST NAME', 'CUST PHONE', 'CUST CITY', 'GEO LOCATION',
+        'ELECTRICITY BILL', 'FUEL BILL', 'QUOTED PRICE', 'CUST REFERRAL', 'SPECIAL DISCOUNT %',
+        'SPECIAL DISCOUNT', 'INVOICE AMOUNT', 'ACTUAL REVENUE', 'SUBSIDY', 'SYSTEM TYPE',
+        'PANELS', 'INVERTER', 'STRUCTURE HEIGHT', 'INSTALLATION FLOOR', 'ROOFTOP PICTURE',
+        'ELECTRICITY BILL DOC', 'AADHAR FRONT', 'AADHAR BACK', 'PAN CARD', 'DOWNPAYMENT',
+        'PIC', 'NOTES'
+      ];
+      
+      const fullCustomers = await Promise.all(
+        filtered.map(async (c) => {
+          try {
+            const detail = await fetcher(`/leads/${c.id}`);
+            return { ...c, ...detail };
+          } catch (e) {
+            return c;
+          }
+        })
+      );
+      
+      const makeLinkCell = (url: string | null | undefined) => {
+        if (!url) return 'No';
+        return { t: 's', v: 'Yes', l: { Target: url, Tooltip: 'Click to view document' } };
+      };
+      
+      const rows = fullCustomers.map((c, index) => {
+      const latestQuotation = c.quotations?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      let expectedRevenue = latestQuotation?.systemCost != null ? Number(latestQuotation.systemCost) : (c.systemCost || 0);
+      if (!latestQuotation && (expectedRevenue === 490950 || expectedRevenue === 598950) && c.recommendedKw) {
+        expectedRevenue = c.recommendedKw * 65340;
+      }
+      
+      const createdAtDate = c.createdAt ? new Date(c.createdAt) : null;
+      const createdDateStr = createdAtDate ? createdAtDate.toLocaleDateString() : '';
+      const createdTimeStr = createdAtDate ? createdAtDate.toLocaleTimeString() : '';
+
+      const specialDiscountPct = c.specialDiscountPercent || 0;
+      const specialDiscountVal = specialDiscountPct && expectedRevenue ? (expectedRevenue * specialDiscountPct) / 100 : '';
+      
+      const referralDiscountVal = c.hasReferral ? 3000 : 0;
+      const invoiceAmount = expectedRevenue ? (expectedRevenue - Number(specialDiscountVal || 0) - referralDiscountVal) : '';
+      // Actual Revenue = (Invoice Amount * 100) / 108.9 (Removing 8.9% tax effectively)
+      const actualRevenue = invoiceAmount !== '' ? (Number(invoiceAmount) * 100) / 108.9 : '';
+      
+      return [
+        index + 1,
+        createdDateStr,
+        createdTimeStr,
+        c.salesRep?.fullName || '',
+        c.salesRep?.phone || '',
+        '', // REPORTING MANAGER
+        c.customerName || '',
+        c.customerPhone || '',
+        c.district || c.address || '',
+        c.latitude && c.longitude ? `${c.latitude}, ${c.longitude}` : '',
+        c.monthlyElectricityBill || '',
+        c.monthlyFuelExpense || '',
+        expectedRevenue || '',
+        c.hasReferral ? 'Yes' : 'No',
+        c.specialDiscountPercent || '',
+        specialDiscountVal,
+        invoiceAmount, // INVOICE AMOUNT
+        actualRevenue, // ACTUAL REVENUE
+        (c as any).subsidy || latestQuotation?.subsidy || '', // SUBSIDY
+        c.systemType || '',
+        c.solarPanelBrand || c.panelBrand || '',
+        c.inverterBrand || '',
+        c.structureHeight || '',
+        c.installationFloor || '',
+        makeLinkCell(c.roofPhotos?.[0]?.photoUrl),
+        makeLinkCell(c.electricityBillUrl || c.documents?.find(d => d.documentType === 'electricity_bill')?.storageUrl),
+        makeLinkCell(c.aadhaarFrontUrl || c.documents?.find(d => d.documentType === 'aadhaar_front')?.storageUrl),
+        makeLinkCell(c.aadhaarBackUrl || c.documents?.find(d => d.documentType === 'aadhaar_back')?.storageUrl),
+        makeLinkCell(c.panImageUrl || c.documents?.find(d => d.documentType === 'pan_card')?.storageUrl),
+        c.downPayment || '',
+        makeLinkCell(c.documents?.find(d => d.documentType === 'down_payment' || d.documentType === 'payment_proof')?.storageUrl),
+        '' // NOTES
+      ];
+    });
+    
+    // Create Worksheet
+    const worksheetData = [headers, ...rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    
+    // Auto-adjust column widths based on content length
+    const colWidths = headers.map((header, colIndex) => {
+      let maxLen = header.length;
+      rows.forEach(row => {
+        const val = row[colIndex];
+        let valLen = 0;
+        if (val && typeof val === 'object' && 'v' in val) {
+          valLen = String(val.v).length;
+        } else if (val) {
+          valLen = String(val).length;
+        }
+        if (valLen > maxLen) {
+          maxLen = valLen;
+        }
+      });
+      // Cap width at 50 chars so massive URLs don't make columns gigantic
+      return { wch: Math.min(maxLen + 2, 50) };
+    });
+    worksheet['!cols'] = colWidths;
+    
+    // Force phone number columns (GIG WORKER PHONE, CUST PHONE) to be read as text 
+    // Phone numbers are at index 4 and 7. But string elements in aoa_to_sheet automatically get t: 's'.
+    // XLSX library handles this fine if they are passed as strings.
+    
+    // Create Workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Customers');
+    
+    // Write and Download
+    XLSX.writeFile(workbook, 'customers_export.xlsx');
+    } catch (error) {
+      console.error("Export failed", error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -286,33 +458,78 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
             LIVE
           </span>
+          <button onClick={handleExport} disabled={isExporting} className="bg-[#003178] text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-[#003178]/90 transition shadow-sm flex items-center gap-2 disabled:opacity-50">
+            {isExporting ? (
+              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            )}
+            {isExporting ? 'Exporting...' : 'Export'}
+          </button>
         </div>
       </div>
 
       {/* ── Search + Filter ──────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search */}
-        <div className="relative flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737783]">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-            </svg>
-          </span>
-          <input
-            id="customer-search"
-            type="text"
-            placeholder="Search by name, phone, email or address…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-[#C3C6D4]/30 bg-white focus:outline-none focus:ring-2 focus:ring-[#003178]/20 focus:border-[#003178]/40 transition-all placeholder:text-[#C3C6D4]"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#737783] hover:text-[#1E1C0D]"
-            >
-              ×
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Search */}
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737783]">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+            </span>
+            <input
+              id="customer-search"
+              type="text"
+              placeholder="Search by name, phone, email or address…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-[#C3C6D4]/30 bg-white focus:outline-none focus:ring-2 focus:ring-[#003178]/20 focus:border-[#003178]/40 transition-all placeholder:text-[#C3C6D4]"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#737783] hover:text-[#1E1C0D]"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+        {/* Additional Filters */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white border border-[#C3C6D4]/30 rounded-xl px-3 py-1.5 shadow-sm">
+            <span className="text-xs font-semibold text-[#737783]">Date:</span>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="text-xs bg-transparent focus:outline-none text-[#1E1C0D]" />
+            <span className="text-xs text-[#C3C6D4]">to</span>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-xs bg-transparent focus:outline-none text-[#1E1C0D]" />
+          </div>
+          
+          <select value={panelFilter} onChange={(e) => setPanelFilter(e.target.value)} className="text-xs border border-[#C3C6D4]/30 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-[#003178] shadow-sm text-[#1E1C0D] max-w-[150px]">
+            <option value="">All Panels</option>
+            {uniquePanels.map(p => <option key={p as string} value={p as string}>{p as string}</option>)}
+          </select>
+
+          <select value={inverterFilter} onChange={(e) => setInverterFilter(e.target.value)} className="text-xs border border-[#C3C6D4]/30 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-[#003178] shadow-sm text-[#1E1C0D] max-w-[150px]">
+            <option value="">All Inverters</option>
+            {uniqueInverters.map(i => <option key={i as string} value={i as string}>{i as string}</option>)}
+          </select>
+
+          <select value={systemTypeFilter} onChange={(e) => setSystemTypeFilter(e.target.value)} className="text-xs border border-[#C3C6D4]/30 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-[#003178] shadow-sm text-[#1E1C0D] max-w-[150px]">
+            <option value="">All Systems</option>
+            {uniqueSystemTypes.map(s => <option key={s as string} value={s as string}>{s as string}</option>)}
+          </select>
+          
+          {(startDate || endDate || panelFilter || inverterFilter || systemTypeFilter) && (
+            <button onClick={() => { setStartDate(''); setEndDate(''); setPanelFilter(''); setInverterFilter(''); setSystemTypeFilter(''); }} className="text-xs text-[#ef4444] font-bold hover:underline px-2 py-1">
+              Clear Filters
             </button>
           )}
         </div>

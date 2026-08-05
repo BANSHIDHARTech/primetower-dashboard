@@ -54,15 +54,15 @@ export function RevenueChart({ data }: { data: ChartData[] }) {
             wrapperStyle={{ fontSize: 11, fontWeight: 600 }}
           />
           <Bar
-            dataKey="expected"
-            name="Expected"
-            fill="#93c5fd"
-            radius={[6, 6, 0, 0]}
-          />
-          <Bar
             dataKey="actual"
             name="Actual"
             fill="#003178"
+            radius={[6, 6, 0, 0]}
+          />
+          <Bar
+            dataKey="expected"
+            name="Expected"
+            fill="#93c5fd"
             radius={[6, 6, 0, 0]}
           />
         </BarChart>

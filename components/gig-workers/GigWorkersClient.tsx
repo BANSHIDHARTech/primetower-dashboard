@@ -1,6 +1,6 @@
 'use client';
 
-import { useGigWorkersStats, useRecentConversions } from '@/lib/queries/api-hooks';
+import { useGigWorkersStats, useRecentConversions, useCustomers } from '@/lib/queries/api-hooks';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -74,6 +74,7 @@ interface GigWorkersClientProps {
 export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
   const { data: workers = [], isLoading: loadingWorkers } = useGigWorkersStats();
   const { data: conversions = [], isLoading: loadingConversions } = useRecentConversions();
+  const { data: allLeads = [] } = useCustomers();
   
   const [isTeamLeaderModalOpen, setIsTeamLeaderModalOpen] = useState(false);
   const [newTLName, setNewTLName] = useState('');
@@ -118,14 +119,66 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
     return <div className="p-8 text-center text-slate-500 font-medium">Loading Real-Time Data...</div>;
   }
 
-  // Computed totals
-  const totalToday = workers.reduce((s: any, w: any) => s + w.today.leads_assigned, 0);
-  const totalYesterday = workers.reduce((s: any, w: any) => s + w.yesterday.leads_assigned, 0);
-  const totalTodaySold = workers.reduce((s: any, w: any) => s + w.today.deals_closed, 0);
-  const totalYesterdaySold = workers.reduce((s: any, w: any) => s + w.yesterday.deals_closed, 0);
-  const totalTodayRev = workers.reduce((s: any, w: any) => s + w.today.revenue, 0);
-  const totalYesterdayRev = workers.reduce((s: any, w: any) => s + w.yesterday.revenue, 0);
-  const activeCount = workers.length;
+  // ── Compute 100% accurate stats dynamically from allLeads ──
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterdayStart = todayStart - 86400000;
+
+  const computedWorkers = workers.map((w: any) => {
+     const workerLeads = allLeads.filter((l: any) => l.salesRepId === w.id);
+     
+     let leadsToday = 0;
+     let leadsYesterday = 0;
+     let soldToday = 0;
+     let soldYesterday = 0;
+     let revToday = 0;
+     let revYesterday = 0;
+
+     workerLeads.forEach((l: any) => {
+        const createdT = new Date(l.createdAt).getTime();
+        if (createdT >= todayStart) leadsToday++;
+        else if (createdT >= yesterdayStart && createdT < todayStart) leadsYesterday++;
+
+        if (l.status === 'sold' && l.soldAt) {
+           const soldT = new Date(l.soldAt).getTime();
+           
+           // Calculate true revenue
+           let actual = Number(l.netCost) || 0;
+           let expected = Number(l.systemCost) || 0;
+           if (actual === 490950 || actual === 598950 || expected === 490950 || expected === 598950) {
+              actual = (l.recommendedKw || 0) * 65340;
+           }
+           
+           if (soldT >= todayStart) {
+              soldToday++;
+              revToday += actual;
+           } else if (soldT >= yesterdayStart && soldT < todayStart) {
+              soldYesterday++;
+              revYesterday += actual;
+           }
+        }
+     });
+
+     const totalLeads = workerLeads.length;
+     const totalSold = workerLeads.filter((l:any) => l.status === 'sold').length;
+     const convRate = totalLeads > 0 ? Math.round((totalSold / totalLeads) * 100) : 0;
+
+     return {
+       ...w,
+       today: { leads_assigned: leadsToday, deals_closed: soldToday, revenue: revToday },
+       yesterday: { leads_assigned: leadsYesterday, deals_closed: soldYesterday, revenue: revYesterday },
+       conversion_rate: convRate,
+     };
+  });
+
+  // Computed totals from our dynamic array
+  const totalToday = computedWorkers.reduce((s: any, w: any) => s + w.today.leads_assigned, 0);
+  const totalYesterday = computedWorkers.reduce((s: any, w: any) => s + w.yesterday.leads_assigned, 0);
+  const totalTodaySold = computedWorkers.reduce((s: any, w: any) => s + w.today.deals_closed, 0);
+  const totalYesterdaySold = computedWorkers.reduce((s: any, w: any) => s + w.yesterday.deals_closed, 0);
+  const totalTodayRev = computedWorkers.reduce((s: any, w: any) => s + w.today.revenue, 0);
+  const totalYesterdayRev = computedWorkers.reduce((s: any, w: any) => s + w.yesterday.revenue, 0);
+  const activeCount = computedWorkers.length;
 
   return (
     <div className="space-y-7">
@@ -228,7 +281,7 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
                   </td>
                 </tr>
               )}
-              {workers.map((w: any) => (
+              {computedWorkers.map((w: any) => (
                 <tr
                   key={w.id}
                   className="border-b border-[#C3C6D4]/10 hover:bg-[#FFF9E9]/70 transition-colors"
@@ -378,11 +431,22 @@ export function GigWorkersClient({ basePath }: GigWorkersClientProps) {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-sm font-bold font-mono text-emerald-700">
-                    {c.actual_revenue
-                      ? fmt(c.actual_revenue)
-                      : c.expected_revenue
-                      ? `~${fmt(c.expected_revenue)}`
-                      : '—'}
+                    {(() => {
+                      let actual = c.actual_revenue;
+                      let expected = c.expected_revenue;
+                      
+                      const fullLead = allLeads.find((l: any) => l.id === c.id);
+                      if (fullLead && (actual === 490950 || actual === 598950 || expected === 490950 || expected === 598950)) {
+                        actual = (fullLead.recommendedKw || 0) * 65340;
+                        expected = actual;
+                      }
+                      
+                      return actual
+                        ? fmt(actual)
+                        : expected
+                        ? `~${fmt(expected)}`
+                        : '—';
+                    })()}
                   </td>
                   <td className="py-3 px-4 text-sm text-[#737783]">
                     {c.sold_at

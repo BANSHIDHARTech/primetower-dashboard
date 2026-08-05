@@ -94,21 +94,22 @@ export function HomeLiveStats({ dealerId }: { dealerId?: string }) {
         />
         <StatCard
           title="Invoice Value"
-          value={fmt(stats.expectedRevenue)}
-          subtitle="Pipeline potential"
+          value={fmt(stats.actualRevenue)}
+          subtitle="Total closed"
           accent="#facc15" 
         />
         <StatCard
           title="Actual Revenue"
-          value={fmt(stats.expectedRevenue != null ? (stats.expectedRevenue * 100) / 108.9 : 0)}
-          subtitle="Total closed"
+          value={fmt(stats.actualRevenue != null ? (stats.actualRevenue * 100) / 108.9 : 0)}
+          subtitle="Net after GST"
           accent="#2dd4bf" 
         />
-        <div className="rounded-2xl p-5 flex flex-col justify-center items-center bg-[#0d1117] border border-slate-800">
-          <p className="text-xs text-slate-500 font-medium text-center">
-            Stats auto-update based on Gig Worker activity
-          </p>
-        </div>
+        <StatCard
+          title="Pipeline Value"
+          value={fmt(stats.expectedRevenue)}
+          subtitle="Pipeline potential"
+          accent="#a855f7" 
+        />
       </div>
     </div>
   );

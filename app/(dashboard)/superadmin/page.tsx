@@ -5,6 +5,7 @@ import { KeyMetricsTab } from '@/components/dashboard/KeyMetricsTab';
 import { RevenueChart } from '@/components/charts/RevenueChart';
 import { LeadPipeline } from '@/components/leads/LeadPipeline';
 import { fetchWithCookie } from '@/lib/queries/server-api';
+import { getMetaAdSpend, getMetaLeadCounts } from '@/lib/server-meta';
 import type { Lead } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -23,26 +24,35 @@ export default async function SuperAdminDashboard({
   const allLeads = (leadsRes || []) as Lead[];
   const dealers = dealersRes || [];
 
-  // ── Meta Ad Spend placeholder ────────────────────────────────────────────
-  // TODO: Replace with real Meta API fetch once integrated.
-  // Shape: { today: number (INR), mtd: number (INR) }
-  const metaAdSpend = { today: 0, mtd: 0 };
+  // ── Meta Ad Spend (fetched from Meta Graph API via server helper)
+  // Requires META_ACCESS_TOKEN and META_AD_ACCOUNT_ID to be set in environment.
+  let metaAdSpend = { today: 0, mtd: 0 };
+  let metaLeads = { today: 0, mtd: 0 };
+  try {
+    const [adSpendRes, leadRes] = await Promise.all([getMetaAdSpend(), getMetaLeadCounts()]);
+    metaAdSpend = adSpendRes || metaAdSpend;
+    metaLeads = leadRes || metaLeads;
+  } catch (e) {
+    console.warn('Failed to fetch Meta metrics:', e);
+  }
 
-  // ── Compute aggregates (existing — unchanged) ────────────────────────────
-  const expectedRevenue = allLeads.reduce(
-    (sum, l) => sum + (Number(l.systemCost) || 0),
-    0,
-  );
-  const actualRevenue = allLeads
+  const now = new Date();
+  
+  // ── Compute aggregates ────────────────────────────
+  const currentMonthLeads = allLeads.filter((l) => {
+    const d = new Date(l.createdAt || new Date());
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+
+  const invoiceValue = currentMonthLeads
     .filter((l) => l.status === 'sold')
-    .reduce((sum, l) => {
-      const invoiceVal = Number(l.systemCost) || 0;
-      return sum + (invoiceVal * 100) / 108.9;
-    }, 0);
+    .reduce((sum, l) => sum + (Number(l.systemCost) || 0), 0);
+
+  const actualValue = (invoiceValue * 100) / 108.9;
+  const soldCurrentMonth = currentMonthLeads.filter((l) => l.status === 'sold').length;
   const soldLeads = allLeads.filter((l) => l.status === 'sold').length;
 
   // Monthly revenue for chart (last 6 months) — existing, unchanged
-  const now = new Date();
   const chartData = Array.from({ length: 6 }, (_, i) => {
     const monthDate = subMonths(now, 5 - i);
     const monthKey = format(monthDate, 'MMM yy');
@@ -63,10 +73,6 @@ export default async function SuperAdminDashboard({
     };
   });
 
-  // Funnel — existing, unchanged
-  const newCount = allLeads.filter((l) => l.status === 'new_lead' || l.status === 'new').length;
-  const svCount = allLeads.filter((l) => l.status === 'site_visit_scheduled').length;
-  const quotedCount = allLeads.filter((l) => l.status === 'quoted').length;
   const total = allLeads.length || 1;
 
   // ── Active tab ──────────────────────────────────────────────────────────
@@ -112,7 +118,7 @@ export default async function SuperAdminDashboard({
 
       {/* ── Key Metrics Tab ─────────────────────────────────────────────── */}
       {activeTab === 'key-metrics' && (
-        <KeyMetricsTab allLeads={allLeads} metaAdSpend={metaAdSpend} />
+        <KeyMetricsTab allLeads={allLeads} metaAdSpend={metaAdSpend} metaLeads={metaLeads} />
       )}
 
       {/* ── Overview Tab (all existing content — unchanged) ─────────────── */}
@@ -122,24 +128,18 @@ export default async function SuperAdminDashboard({
           <HomeLiveStats />
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <StatsCard
               title="Invoice Value"
-              value={expectedRevenue}
-              subtitle={`${allLeads.length} total leads`}
+              value={invoiceValue}
+              subtitle={`${soldCurrentMonth} deals closed this month`}
               color="blue"
             />
             <StatsCard
               title="Actual Revenue"
-              value={actualRevenue}
-              subtitle={`${soldLeads} deals closed`}
+              value={actualValue}
+              subtitle={`Net after GST`}
               color="green"
-            />
-            <StatsCard
-              title="Pipeline Value"
-              value={expectedRevenue - actualRevenue}
-              subtitle={`${quotedCount} quoted leads`}
-              color="orange"
             />
           </div>
 
@@ -147,38 +147,6 @@ export default async function SuperAdminDashboard({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <RevenueChart data={chartData} />
             <LeadPipeline leads={allLeads} />
-          </div>
-
-          {/* Conversion Funnel */}
-          <div className="bg-white rounded-2xl border border-[#C3C6D4]/15 p-6">
-            <h3 className="text-sm font-bold text-[#1E1C0D] mb-4 tracking-tight">
-              Conversion Funnel
-            </h3>
-            <div className="space-y-3">
-              {[
-                { label: 'New', count: newCount, color: 'bg-blue-500' },
-                { label: 'Site Visit', count: svCount, color: 'bg-purple-500' },
-                { label: 'Quoted', count: quotedCount, color: 'bg-yellow-500' },
-                { label: 'Sold', count: soldLeads, color: 'bg-green-500' },
-              ].map((stage) => (
-                <div key={stage.label}>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-xs font-semibold text-[#434652]">
-                      {stage.label}
-                    </span>
-                    <span className="text-xs font-bold text-[#1E1C0D]">
-                      {stage.count} ({Math.round((stage.count / total) * 100)}%)
-                    </span>
-                  </div>
-                  <div className="h-2.5 bg-[#E9E2CB] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${stage.color}`}
-                      style={{ width: `${(stage.count / total) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </>
       )}

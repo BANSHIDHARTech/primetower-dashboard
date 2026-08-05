@@ -3,7 +3,17 @@ import type { Lead } from '@/lib/types';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/types';
 
 export function LeadCard({ lead, salesRepName }: { lead: Lead; salesRepName?: string }) {
-  const revenueAmount = lead.systemCost || lead.netCost || 0;
+  let revenueAmount = 0;
+  if (lead.saleValue) {
+    revenueAmount = lead.saleValue;
+  } else {
+    const currentCost = lead.systemCost || lead.netCost || 0;
+    if (currentCost === 490950 || currentCost === 598950) {
+      revenueAmount = ((lead as any).recommendedKw || 0) * 65340;
+    } else {
+      revenueAmount = currentCost;
+    }
+  }
   const revenue = revenueAmount
     ? revenueAmount.toLocaleString('en-IN', {
         style: 'currency',

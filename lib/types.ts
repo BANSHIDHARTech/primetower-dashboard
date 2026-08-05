@@ -50,6 +50,12 @@ export interface Lead {
   meetingDurationSecs?: number | null;  // Added from DB schema
   quotationDecision?: string | null;    // 'Accepted' | 'Denied' | 'Further Assistance'
   saleValue?: number | null;            // Explicit sale value (falls back to systemCost)
+  
+  // ── Payment & Discount fields (Added from API) ───────────────────
+  hasReferral?: boolean | null;
+  specialDiscountPercent?: number | null;
+  downPayment?: number | null;
+  paymentMode?: string | null;
 }
 
 /** Full customer detail — returned by GET /leads/:id enriched response */
@@ -110,8 +116,10 @@ export interface CustomerDetail extends Lead {
     id: string;
     quotationNumber: string;
     pdfUrl?: string | null;
-    systemSize?: number | null;
-    netCost?: number | null;
+    systemSize?: number | string | null;
+    systemCost?: number | string | null;
+    subsidy?: number | string | null;
+    netCost?: number | string | null;
     createdAt: string;
   }> | null;
   roofPhotos?: Array<{

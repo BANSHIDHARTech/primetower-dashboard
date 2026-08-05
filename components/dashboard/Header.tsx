@@ -8,12 +8,14 @@ const ROLE_LABELS: Record<UserRole, string> = {
   superadmin: 'Super Admin',
   dealer: 'Dealer',
   salesrep: 'Sales Rep',
+  team_leader: 'Team Leader',
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
-  superadmin: 'bg-[#003178] text-white',
-  dealer: 'bg-[#FB6D00] text-white',
-  salesrep: 'bg-[#2E7D32] text-white',
+  superadmin: 'bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm',
+  dealer: 'bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm',
+  salesrep: 'bg-orange-100 text-orange-700 border border-orange-200 shadow-sm',
+  team_leader: 'bg-purple-100 text-purple-700 border border-purple-200 shadow-sm',
 };
 
 export function Header({
