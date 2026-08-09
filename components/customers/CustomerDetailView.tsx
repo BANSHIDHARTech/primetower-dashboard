@@ -470,6 +470,8 @@ export function CustomerDetailView({
           <InfoRow label="District" value={displayDistrict} />
           <InfoRow label="State" value={displayState} />
           <InfoRow label="Installation Floor" value={customer.installationFloor} />
+          <InfoRow label="Roof Length" value={customer.roofLength ? `${customer.roofLength} ft` : undefined} />
+          <InfoRow label="Roof Width" value={customer.roofBreadth ? `${customer.roofBreadth} ft` : undefined} />
           {customer.latitude && customer.longitude && (
             <InfoRow
               label="GPS Location"
@@ -652,8 +654,13 @@ export function CustomerDetailView({
           <InfoRow label="Net Cost (Subsidy)" value={fmtINR(displayNetCost)} />
           <InfoRow label="Referral Given" value={customer.hasReferral ? 'Yes' : 'No'} />
           <InfoRow label="Applied Discount" value={customer.specialDiscountPercent ? `${customer.specialDiscountPercent}%` : 'None'} />
-          <InfoRow label="Downpayment" value={customer.downPayment != null ? fmtINR(customer.downPayment) : '—'} />
           <InfoRow label="Payment Mode" value={customer.paymentMode} />
+          <InfoRow label="Payment Type (Cash/EMI)" value={customer.paymentType || customer.paymentMode || '—'} />
+          <InfoRow label="Finance Partner (NBFC)" value={customer.financePartner || '—'} />
+          <InfoRow 
+            label="Cash / Transaction Amount" 
+            value={customer.downPayment != null ? fmtINR(customer.downPayment) : (customer.cashValue != null ? fmtINR(customer.cashValue) : '—')} 
+          />
           
           <div className="flex items-center justify-between py-2 border-b border-[#C3C6D4]/10 last:border-0">
             <span className="text-xs text-[#737783] font-medium shrink-0 w-40">Quotation Sent</span>

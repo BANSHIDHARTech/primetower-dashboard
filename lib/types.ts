@@ -56,6 +56,9 @@ export interface Lead {
   specialDiscountPercent?: number | null;
   downPayment?: number | null;
   paymentMode?: string | null;
+  paymentType?: string | null;
+  financePartner?: string | null;
+  cashValue?: number | null;
 }
 
 /** Full customer detail — returned by GET /leads/:id enriched response */
@@ -97,6 +100,8 @@ export interface CustomerDetail extends Lead {
   state?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  roofLength?: number | string | null;
+  roofBreadth?: number | string | null;
 
   // ── Gig Worker ───────────────────────────────────────────────────
   salesRep?: {
