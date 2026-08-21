@@ -1,6 +1,6 @@
 import type { Lead, LeadStatus } from '@/lib/types';
 
-const STAGES: LeadStatus[] = ['new', 'site_visit_scheduled', 'quoted', 'sold', 'live'];
+const STAGES: LeadStatus[] = ['new', 'application_pending', 'application_completed', 'site_visit_scheduled', 'quoted', 'sold', 'live'];
 
 function formatLabel(s: string) {
   return s
@@ -11,6 +11,8 @@ function formatLabel(s: string) {
 
 const STAGE_COLORS: Record<string, string> = {
   new: 'bg-blue-500',
+  application_pending: 'bg-orange-500',
+  application_completed: 'bg-blue-600',
   site_visit_scheduled: 'bg-purple-500',
   quoted: 'bg-yellow-500',
   sold: 'bg-green-500',

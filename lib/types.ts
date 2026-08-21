@@ -21,7 +21,9 @@ export type LeadStatus =
   | 'survey_done'
   | 'installation_scheduled'
   | 'live'
-  | 'rejected';
+  | 'rejected'
+  | 'application_pending'
+  | 'application_completed';
 
 export interface Lead {
   id: string;
@@ -153,6 +155,8 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   installation_scheduled: 'Installation Scheduled',
   live: 'Live',
   rejected: 'Rejected',
+  application_pending: 'Application Pending',
+  application_completed: 'Application Completed',
 };
 
 export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
@@ -165,6 +169,8 @@ export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
   installation_scheduled: 'bg-indigo-100 text-indigo-800',
   live: 'bg-emerald-100 text-emerald-800',
   rejected: 'bg-red-100 text-red-800',
+  application_pending: 'bg-orange-100 text-orange-800',
+  application_completed: 'bg-blue-100 text-blue-800',
 };
 
 /** Ring colours for customer avatar borders on the card grid */
@@ -178,4 +184,6 @@ export const LEAD_STATUS_RING: Record<LeadStatus, string> = {
   installation_scheduled: 'ring-indigo-400',
   live: 'ring-emerald-500',
   rejected: 'ring-red-400',
+  application_pending: 'ring-orange-400',
+  application_completed: 'ring-blue-400',
 };

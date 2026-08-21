@@ -655,12 +655,37 @@ export function CustomerDetailView({
           <InfoRow label="Referral Given" value={customer.hasReferral ? 'Yes' : 'No'} />
           <InfoRow label="Applied Discount" value={customer.specialDiscountPercent ? `${customer.specialDiscountPercent}%` : 'None'} />
           <InfoRow label="Payment Mode" value={customer.paymentMode} />
-          <InfoRow label="Payment Type (Cash/EMI)" value={customer.paymentType || customer.paymentMode || '—'} />
-          <InfoRow label="Finance Partner (NBFC)" value={customer.financePartner || '—'} />
+          <InfoRow 
+            label="Payment Type (Cash/EMI)" 
+            value={
+              customer.paymentType === 'Cash' ? 'Full Payment / Cash' :
+              customer.paymentType === 'Finance' ? 'Finance / EMI' :
+              customer.paymentType || customer.paymentMode || '—'
+            } 
+          />
+          {customer.paymentType === 'Finance' && (
+            <InfoRow label="Finance Partner (NBFC)" value={customer.financePartner || '—'} />
+          )}
           <InfoRow 
             label="Cash / Transaction Amount" 
             value={customer.downPayment != null ? fmtINR(customer.downPayment) : (customer.cashValue != null ? fmtINR(customer.cashValue) : '—')} 
           />
+          {(() => {
+            const isFinance = customer.paymentType === 'Finance';
+            const financePercent = customer.financePercent ? Number(customer.financePercent) : 0;
+            const financeAmount = isFinance ? (invoiceAmount * (financePercent / 100)) : 0;
+            const requiredDp = invoiceAmount - financeAmount;
+            const dpEntered = customer.downPayment != null ? Number(customer.downPayment) : (customer.cashValue != null ? Number(customer.cashValue) : 0);
+            const pendingBalance = requiredDp - dpEntered;
+            
+            return (
+              <InfoRow
+                label="Pending Balance"
+                value={fmtINR(pendingBalance > 0 ? pendingBalance : 0)}
+                highlight
+              />
+            );
+          })()}
           
           <div className="flex items-center justify-between py-2 border-b border-[#C3C6D4]/10 last:border-0">
             <span className="text-xs text-[#737783] font-medium shrink-0 w-40">Quotation Sent</span>

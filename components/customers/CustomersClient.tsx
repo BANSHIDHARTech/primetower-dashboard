@@ -327,7 +327,7 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
         'SNO', 'CREATED DATE', 'CREATED TIME', 'QUOTATION DATE', 'QUOTATION TIME', 'GIG WORKER NAME', 'GIG WORKER PHONE',
         'REPORTING MANAGER', 'CUST NAME', 'CUST PHONE', 'CUST CITY', 'CITY', 'GEO LOCATION',
         'ELECTRICITY BILL', 'FUEL BILL', 'QUOTED PRICE', 'CUST REFERRAL', 'SPECIAL DISCOUNT %',
-        'SPECIAL DISCOUNT', 'INVOICE AMOUNT', 'ACTUAL REVENUE', 'SUBSIDY', 'SYSTEM TYPE',
+        'SPECIAL DISCOUNT', 'INVOICE AMOUNT', 'ACTUAL REVENUE', 'SUBSIDY', 'SOLAR CAPACITY (KW)', 'BALANCE PAYMENT', 'SYSTEM TYPE',
         'PANELS', 'INVERTER', 'STRUCTURE HEIGHT', 'INSTALLATION FLOOR', 'ROOFTOP PICTURE',
         'ELECTRICITY BILL DOC', 'AADHAR FRONT', 'AADHAR BACK', 'PAN CARD', 'DOWNPAYMENT',
         'DOWNPAYMENT MODE', 'PIC', 'NOTES'
@@ -395,6 +395,19 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
       // Actual Revenue = (Invoice Amount * 100) / 108.9 (Removing 8.9% tax effectively)
       const actualRevenue = invoiceAmount !== '' ? (Number(invoiceAmount) * 100) / 108.9 : '';
       
+      let displayPendingBalance: number | string = '';
+      if (invoiceAmount !== '') {
+        const isFinance = c.paymentType === 'Finance';
+        const financePercent = c.financePercent ? Number(c.financePercent) : 0;
+        const financeAmt = isFinance ? (Number(invoiceAmount) * (financePercent / 100)) : 0;
+        const requiredDp = Number(invoiceAmount) - financeAmt;
+        const dpEntered = c.downPayment != null ? Number(c.downPayment) : (c.cashValue != null ? Number(c.cashValue) : 0);
+        const pendingBalance = requiredDp - dpEntered;
+        displayPendingBalance = pendingBalance > 0 ? pendingBalance : 0;
+      }
+      
+      const notesStr = Array.isArray(c.notes) ? c.notes.map((n: any) => n.content).join(' | ') : '';
+      
       let displaySystemType = c.systemType || '';
       if (displaySystemType.toLowerCase() === 'hybrid') {
         displaySystemType = c.isBatteryRequired ? 'Hybrid with battery' : 'Hybrid without battery';
@@ -423,6 +436,8 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
         invoiceAmount, // INVOICE AMOUNT
         actualRevenue, // ACTUAL REVENUE
         (c as any).subsidy || latestQuotation?.subsidy || '', // SUBSIDY
+        c.recommendedKw || '', // SOLAR CAPACITY (KW)
+        displayPendingBalance, // BALANCE PAYMENT
         displaySystemType,
         c.solarPanelBrand || c.panelBrand || '',
         c.inverterBrand || '',
@@ -436,7 +451,7 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
         c.downPayment || '',
         c.paymentMode || '',
         makeLinkCell(c.documents?.find(d => d.documentType === 'down_payment' || d.documentType === 'payment_proof')?.storageUrl),
-        '' // NOTES
+        notesStr // NOTES
       ];
     });
     
