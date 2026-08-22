@@ -308,7 +308,9 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
   const liveCount = customers.filter((c) => c.status === 'live').length;
   const soldCount = customers.filter((c) => c.status === 'sold').length;
   const totalRevenue = customers.reduce((s, c) => {
-    const lq = c.quotations?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    const lq = c.quotations && c.quotations.length > 0
+      ? [...c.quotations].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+      : undefined;
     let rev = lq?.systemCost != null ? Number(lq.systemCost) : (c.netCost || c.systemCost || 0);
     
     if (!lq && (rev === 490950 || rev === 598950) && c.recommendedKw) {
@@ -322,37 +324,20 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
 
   const handleExport = async () => {
     setIsExporting(true);
+    // Yield to the main thread so React can render the spinner
+    await new Promise(resolve => setTimeout(resolve, 50));
     try {
       const headers = [
         'SNO', 'CREATED DATE', 'CREATED TIME', 'QUOTATION DATE', 'QUOTATION TIME', 'GIG WORKER NAME', 'GIG WORKER PHONE',
         'REPORTING MANAGER', 'CUST NAME', 'CUST PHONE', 'CUST CITY', 'CITY', 'GEO LOCATION',
         'ELECTRICITY BILL', 'FUEL BILL', 'QUOTED PRICE', 'CUST REFERRAL', 'SPECIAL DISCOUNT %',
-        'SPECIAL DISCOUNT', 'INVOICE AMOUNT', 'ACTUAL REVENUE', 'SUBSIDY', 'SOLAR CAPACITY (KW)', 'BALANCE PAYMENT', 'SYSTEM TYPE',
-        'PANELS', 'INVERTER', 'STRUCTURE HEIGHT', 'INSTALLATION FLOOR', 'ROOFTOP PICTURE',
+        'SPECIAL DISCOUNT', 'INVOICE AMOUNT', 'ACTUAL REVENUE', 'SUBSIDY', 'SOLAR CAPACITY (KW)', 'FINANCE PERCENTAGE', 'FINANCE AMOUNT', 'BALANCE PAYMENT', 'SYSTEM TYPE',
+        'PANELS', 'INVERTER', 'STRUCTURE HEIGHT', 'INSTALLATION FLOOR', 'ROOFTOP LENGTH', 'ROOFTOP WIDTH', 'ROOFTOP PICTURE',
         'ELECTRICITY BILL DOC', 'AADHAR FRONT', 'AADHAR BACK', 'PAN CARD', 'DOWNPAYMENT',
         'DOWNPAYMENT MODE', 'PIC', 'NOTES'
       ];
       
-      const fullCustomers: any[] = [];
-      const CHUNK_SIZE = 5;
-      
-      for (let i = 0; i < filtered.length; i += CHUNK_SIZE) {
-        const chunk = filtered.slice(i, i + CHUNK_SIZE);
-        const chunkResults = await Promise.all(
-          chunk.map(async (c) => {
-            try {
-              const detail = await fetcher(`/leads/${c.id}`);
-              return { ...c, ...detail };
-            } catch (e) {
-              return c;
-            }
-          })
-        );
-        fullCustomers.push(...chunkResults);
-        
-        // Let the main thread and network queue breathe
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
+      const fullCustomers = filtered;
       
       const makeLinkCell = (url: string | null | undefined) => {
         if (!url) return 'No';
@@ -360,7 +345,9 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
       };
       
       const rows = fullCustomers.map((c, index) => {
-      const latestQuotation = c.quotations?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const latestQuotation = c.quotations && c.quotations.length > 0 
+        ? [...c.quotations].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] 
+        : undefined;
       let expectedRevenue = latestQuotation?.systemCost != null ? Number(latestQuotation.systemCost) : (c.systemCost || 0);
       if (!latestQuotation && (expectedRevenue === 490950 || expectedRevenue === 598950) && c.recommendedKw) {
         expectedRevenue = c.recommendedKw * 65340;
@@ -396,10 +383,11 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
       const actualRevenue = invoiceAmount !== '' ? (Number(invoiceAmount) * 100) / 108.9 : '';
       
       let displayPendingBalance: number | string = '';
+      let financeAmt = 0;
+      const financePercent = c.financePercent ? Number(c.financePercent) : 0;
       if (invoiceAmount !== '') {
         const isFinance = c.paymentType === 'Finance';
-        const financePercent = c.financePercent ? Number(c.financePercent) : 0;
-        const financeAmt = isFinance ? (Number(invoiceAmount) * (financePercent / 100)) : 0;
+        financeAmt = isFinance ? (Number(invoiceAmount) * (financePercent / 100)) : 0;
         const requiredDp = Number(invoiceAmount) - financeAmt;
         const dpEntered = c.downPayment != null ? Number(c.downPayment) : (c.cashValue != null ? Number(c.cashValue) : 0);
         const pendingBalance = requiredDp - dpEntered;
@@ -437,12 +425,16 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
         actualRevenue, // ACTUAL REVENUE
         (c as any).subsidy || latestQuotation?.subsidy || '', // SUBSIDY
         c.recommendedKw || '', // SOLAR CAPACITY (KW)
+        financePercent ? `${financePercent}%` : '', // FINANCE PERCENTAGE
+        financeAmt || '', // FINANCE AMOUNT
         displayPendingBalance, // BALANCE PAYMENT
         displaySystemType,
         c.solarPanelBrand || c.panelBrand || '',
         c.inverterBrand || '',
         c.structureHeight || '',
         c.installationFloor || '',
+        c.roofLength || '', // ROOFTOP LENGTH
+        c.roofBreadth || '', // ROOFTOP WIDTH
         makeLinkCell(c.roofPhotos?.[0]?.photoUrl),
         makeLinkCell(c.electricityBillUrl || c.documents?.find(d => d.documentType === 'electricity_bill')?.storageUrl),
         makeLinkCell(c.aadhaarFrontUrl || c.documents?.find(d => d.documentType === 'aadhaar_front')?.storageUrl),
@@ -489,8 +481,9 @@ export function CustomersClient({ basePath, initialCustomers = [] }: CustomersCl
     
     // Write and Download
     XLSX.writeFile(workbook, 'customers_export.xlsx');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Export failed", error);
+      alert("Export failed: " + (error?.message || error));
     } finally {
       setIsExporting(false);
     }
